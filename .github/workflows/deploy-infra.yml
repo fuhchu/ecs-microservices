@@ -25,7 +25,7 @@ jobs:
     runs-on: ubuntu-latest
     defaults:
       run:
-        working-directory: infra
+        working-directory: infra/environments/dev
 
     steps:
       - name: Checkout
@@ -53,7 +53,7 @@ jobs:
 
       - name: Terraform plan
         id: plan
-        run: terraform plan -var-file=${{ env.TF_VAR_FILE }} -no-color -out=ci.tfplan
+        run: terraform plan -no-color -out=ci.tfplan
         continue-on-error: true  # surface plan output even on failure
 
       - name: Post plan to PR

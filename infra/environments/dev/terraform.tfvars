@@ -1,0 +1,10 @@
+environment           = "dev"
+az_count              = 2
+single_nat_gateway    = true
+db_instance_class     = "db.t3.micro"
+db_allocated_storage  = 20
+db_multi_az           = false
+service_desired_count = 1
+task_cpu              = "256"
+task_memory           = "512"
+acm_certificate_arn   = ""

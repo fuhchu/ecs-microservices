@@ -1,8 +1,7 @@
-# Public-facing security group for the ALB.
 resource "aws_security_group" "alb" {
-  name        = "${local.name_prefix}-alb-sg"
+  name        = "${var.name_prefix}-alb-sg"
   description = "Public ingress to the ALB"
-  vpc_id      = aws_vpc.main.id
+  vpc_id      = var.vpc_id
 
   ingress {
     description = "HTTP from internet"
@@ -27,29 +26,24 @@ resource "aws_security_group" "alb" {
     cidr_blocks = ["0.0.0.0/0"]
   }
 
-  tags = { Name = "${local.name_prefix}-alb-sg" }
+  tags = { Name = "${var.name_prefix}-alb-sg" }
 }
 
-resource "aws_lb" "main" {
-  name               = "${local.name_prefix}-alb"
-  internal           = false
-  load_balancer_type = "application"
-  security_groups    = [aws_security_group.alb.id]
-  subnets            = aws_subnet.public[*].id
-
-  # Prod: protect against accidental deletion. Dev keeps teardown easy.
+resource "aws_lb" "this" {
+  name                       = "${var.name_prefix}-alb"
+  internal                   = false
+  load_balancer_type         = "application"
+  security_groups            = [aws_security_group.alb.id]
+  subnets                    = var.public_subnet_ids
   enable_deletion_protection = var.environment == "prod"
-
-  # Drop invalid/malformed HTTP headers at the edge (security hardening).
   drop_invalid_header_fields = true
 }
 
-# Target group for the api-gateway tasks. ip target type is required for Fargate.
 resource "aws_lb_target_group" "gateway" {
-  name        = "${local.name_prefix}-gw-tg"
+  name        = "${var.name_prefix}-gw-tg"
   port        = 8000
   protocol    = "HTTP"
-  vpc_id      = aws_vpc.main.id
+  vpc_id      = var.vpc_id
   target_type = "ip"
 
   health_check {
@@ -61,21 +55,14 @@ resource "aws_lb_target_group" "gateway" {
     unhealthy_threshold = 3
   }
 
-  # Let connections drain on deploys/scale-in instead of cutting them.
   deregistration_delay = 30
 }
 
-# --- Listeners ---
-# We terminate plain HTTP today. HTTPS (443) is the production target but
-# requires an ACM certificate, which requires a domain we don't own yet.
-# var.acm_certificate_arn flips on TLS + an HTTP->HTTPS redirect when set.
-
 resource "aws_lb_listener" "http" {
-  load_balancer_arn = aws_lb.main.arn
+  load_balancer_arn = aws_lb.this.arn
   port              = 80
   protocol          = "HTTP"
 
-  # If a cert is provided, redirect all HTTP to HTTPS. Otherwise serve over HTTP.
   dynamic "default_action" {
     for_each = var.acm_certificate_arn == "" ? [1] : []
     content {
@@ -98,9 +85,8 @@ resource "aws_lb_listener" "http" {
 }
 
 resource "aws_lb_listener" "https" {
-  count = var.acm_certificate_arn != "" ? 1 : 0
-
-  load_balancer_arn = aws_lb.main.arn
+  count             = var.acm_certificate_arn != "" ? 1 : 0
+  load_balancer_arn = aws_lb.this.arn
   port              = 443
   protocol          = "HTTPS"
   ssl_policy        = "ELBSecurityPolicy-TLS13-1-2-2021-06"

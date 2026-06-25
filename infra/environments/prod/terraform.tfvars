@@ -1,0 +1,11 @@
+environment           = "prod"
+az_count              = 2
+single_nat_gateway    = false
+db_instance_class     = "db.t3.small"
+db_allocated_storage  = 50
+db_multi_az           = true
+service_desired_count = 2
+task_cpu              = "512"
+task_memory           = "1024"
+# acm_certificate_arn = "arn:aws:acm:us-west-2:445481011516:certificate/xxxxxxxx"
+acm_certificate_arn   = ""

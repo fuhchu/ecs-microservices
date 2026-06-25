@@ -4,7 +4,7 @@ resource "aws_iam_openid_connect_provider" "github" {
   thumbprint_list = ["6938fd4d98bab03faadb97b34396831e3780aea1"]
 }
 
-data "aws_iam_policy_document" "github_actions_assume" {
+data "aws_iam_policy_document" "assume" {
   statement {
     actions = ["sts:AssumeRoleWithWebIdentity"]
     principals {
@@ -16,28 +16,24 @@ data "aws_iam_policy_document" "github_actions_assume" {
       variable = "token.actions.githubusercontent.com:aud"
       values   = ["sts.amazonaws.com"]
     }
-    # Scope to this repo + main branch only. Prevents other repos or branches
-    # from assuming this role even if they share the same AWS account.
+    # Scoped to this repo + main branch only.
     condition {
       test     = "StringLike"
       variable = "token.actions.githubusercontent.com:sub"
-      values   = ["repo:fuhchu/ecs-microservices:ref:refs/heads/main"]
+      values   = ["repo:${var.github_repo}:ref:refs/heads/main"]
     }
   }
 }
 
 resource "aws_iam_role" "github_actions" {
-  name               = "${local.name_prefix}-github-actions"
-  assume_role_policy = data.aws_iam_policy_document.github_actions_assume.json
+  name               = "${var.name_prefix}-github-actions"
+  assume_role_policy = data.aws_iam_policy_document.assume.json
 }
 
-data "aws_iam_policy_document" "github_actions_permissions" {
-  # ECR: authenticate, push images
+data "aws_iam_policy_document" "permissions" {
   statement {
-    actions = [
-      "ecr:GetAuthorizationToken",
-    ]
-    resources = ["*"] # GetAuthorizationToken is account-level, cannot be scoped
+    actions   = ["ecr:GetAuthorizationToken"]
+    resources = ["*"] # account-level API, cannot be scoped to a resource
   }
 
   statement {
@@ -50,10 +46,9 @@ data "aws_iam_policy_document" "github_actions_permissions" {
       "ecr:BatchGetImage",
       "ecr:GetDownloadUrlForLayer",
     ]
-    resources = [for repo in aws_ecr_repository.service : repo.arn]
+    resources = var.ecr_repository_arns
   }
 
-  # ECS: deploy new task definition revisions and wait for stability
   statement {
     actions = [
       "ecs:DescribeServices",
@@ -65,13 +60,11 @@ data "aws_iam_policy_document" "github_actions_permissions" {
     resources = ["*"]
   }
 
-  # IAM: pass the task execution and task roles to ECS when registering task defs
   statement {
     actions   = ["iam:PassRole"]
-    resources = [aws_iam_role.task_execution.arn, aws_iam_role.task.arn]
+    resources = [var.task_execution_role_arn, var.task_role_arn]
   }
 
-  # Terraform state: read/write state in S3
   statement {
     actions = [
       "s3:GetObject",
@@ -87,7 +80,7 @@ data "aws_iam_policy_document" "github_actions_permissions" {
 }
 
 resource "aws_iam_role_policy" "github_actions" {
-  name   = "${local.name_prefix}-github-actions-policy"
+  name   = "${var.name_prefix}-github-actions-policy"
   role   = aws_iam_role.github_actions.id
-  policy = data.aws_iam_policy_document.github_actions_permissions.json
+  policy = data.aws_iam_policy_document.permissions.json
 }

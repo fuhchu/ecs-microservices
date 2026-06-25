@@ -1,9 +1,8 @@
-resource "aws_ecr_repository" "service" {
-  for_each = toset(local.services)
-
+resource "aws_ecr_repository" "this" {
+  for_each             = toset(var.services)
   name                 = "ecs-microservices/${each.key}"
   image_tag_mutability = "MUTABLE"
-  force_delete         = true # dev: allow destroy even with images present
+  force_delete         = true
 
   image_scanning_configuration {
     scan_on_push = true
@@ -12,9 +11,8 @@ resource "aws_ecr_repository" "service" {
   tags = { Name = "ecs-microservices-${each.key}" }
 }
 
-# Keep only the last 10 images per repo to control storage cost.
-resource "aws_ecr_lifecycle_policy" "service" {
-  for_each   = aws_ecr_repository.service
+resource "aws_ecr_lifecycle_policy" "this" {
+  for_each   = aws_ecr_repository.this
   repository = each.value.name
 
   policy = jsonencode({

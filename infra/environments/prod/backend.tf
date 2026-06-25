@@ -3,9 +3,9 @@ terraform {
 
   backend "s3" {
     bucket       = "chu-statefile"
-    key          = "ecs-microservices/terraform.tfstate"
+    key          = "ecs-microservices/prod/terraform.tfstate"
     region       = "us-west-2"
     encrypt      = true
-    use_lockfile = true # S3-native state locking (no DynamoDB table needed)
+    use_lockfile = true
   }
 }
