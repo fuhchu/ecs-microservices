@@ -1,28 +1,77 @@
 # ECS Microservices
 
-Three-service microservices architecture on AWS ECS Fargate with RDS PostgreSQL, Secrets Manager, and multi-environment Terraform.
+Three FastAPI microservices on AWS ECS Fargate with RDS PostgreSQL, Secrets Manager credential injection, Cloud Map service discovery, and multi-environment Terraform.
 
-## Services
-
-| Service | Port | Responsibility |
-|---|---|---|
-| api-gateway | 8000 | Public entry point; proxies to users and items |
-| users | 8000 | User CRUD; owns the `users` table in RDS |
-| items | 8000 | Item CRUD; owns the `items` table; validates users via service call |
+Part of a [4-project DevOps portfolio](https://github.com/fuhchu).
 
 ## Architecture
 
-> Diagram coming after Terraform infra milestone.
+![Architecture diagram](docs/architecture.png)
 
-## Local Development
+```mermaid
+graph TD
+    Client([Internet]) -->|HTTP :80| ALB[Application Load Balancer]
 
-```bash
-# Each service
-cd services/<name>
-pip install -r requirements.txt
-DATABASE_URL=postgresql://... USERS_SERVICE_URL=http://localhost:8001 uvicorn app.main:app --reload
+    subgraph VPC [VPC — 2 AZs]
+        subgraph Public [Public Subnets]
+            ALB
+            NAT[NAT Gateway]
+        end
+        subgraph Private [Private Subnets]
+            GW[api-gateway]
+            US[users]
+            IT[items]
+            RDS[(RDS PostgreSQL)]
+        end
+    end
+
+    ALB --> GW
+    GW -->|Cloud Map DNS| US
+    GW -->|Cloud Map DNS| IT
+    IT -->|validate user| US
+    US & IT --> RDS
 ```
+
+## Services
+
+| Service | Role | Public |
+|---|---|---|
+| api-gateway | Reverse proxy; single public entry point | Yes (ALB) |
+| users | User CRUD, owns `users` table | Internal only |
+| items | Item CRUD, owns `items` table, validates users via service call | Internal only |
 
 ## Infrastructure
 
-See `infra/` for Terraform — VPC, RDS, Secrets Manager, ECR, ECS, ALB.
+| Component | Technology |
+|---|---|
+| Compute | ECS Fargate (serverless containers) |
+| Database | RDS PostgreSQL, private subnets, encrypted at rest |
+| Secrets | AWS Secrets Manager — DB password never hardcoded |
+| Service discovery | AWS Cloud Map (`ecs-msvc.local` private DNS) |
+| Load balancing | Application Load Balancer (public), HTTPS-ready |
+| IaC | Terraform — one module, `dev.tfvars` / `prod.tfvars` |
+| CI/CD | GitHub Actions — path-filtered per service, OIDC auth |
+
+## Multi-environment
+
+```bash
+# Dev (cost-optimized: 1 NAT, t3.micro RDS single-AZ, 1 task each)
+terraform apply -var-file=dev.tfvars
+
+# Prod (HA: 1 NAT per AZ, t3.small Multi-AZ RDS, 2 tasks each)
+terraform apply -var-file=prod.tfvars
+```
+
+## CI/CD
+
+Each service has its own GitHub Actions pipeline that triggers **only when that service's directory changes**. Pushing to `services/users/` deploys only the users service — items and api-gateway are untouched.
+
+- Keyless AWS authentication via OIDC (no stored credentials)
+- Images tagged with git SHA for full traceability
+- `wait-for-service-stability` — pipeline fails if ECS rolls back
+- Infra pipeline: `plan` on PR, `apply` on merge to main
+
+## Docs
+
+- [Architecture](docs/ARCHITECTURE.md) — full diagram, component breakdown, design decisions
+- [Interview Notes](docs/INTERVIEW-NOTES.md) — Q&A covering containers, networking, secrets, CI/CD, IaC
