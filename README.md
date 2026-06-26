@@ -74,4 +74,5 @@ Each service has its own GitHub Actions pipeline that triggers **only when that 
 ## Docs
 
 - [Architecture](docs/ARCHITECTURE.md) — full diagram, component breakdown, design decisions
+- [Runbook](docs/RUNBOOK.md) — operational troubleshooting by plane (network, compute, data/secrets, delivery)
 - [Interview Notes](docs/INTERVIEW-NOTES.md) — Q&A covering containers, networking, secrets, CI/CD, IaC
